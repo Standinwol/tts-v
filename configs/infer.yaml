@@ -1,0 +1,7 @@
+model: F5TTS_v1_Base
+require_ref_text: true
+allow_auto_transcribe_ref: false
+default_speed: 1.0
+default_remove_silence: false
+default_nfe_step: 32
+default_vocoder_name: vocos

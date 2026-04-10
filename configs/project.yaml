@@ -1,0 +1,30 @@
+audio:
+  sample_rate: 24000
+  channels: 1
+  format: wav
+  min_sec: 3
+  max_sec: 20
+
+text:
+  language: vi
+  normalize_unicode: true
+
+manifest:
+  master: ./data/manifests/master.jsonl
+  validated: ./data/manifests/validated.jsonl
+  invalid: ./data/manifests/invalid.jsonl
+  train_f5: ./data/manifests/train_f5.csv
+  val_f5: ./data/manifests/val_f5.csv
+
+paths:
+  imports_root: ./data/imports
+  reports_dir: ./reports
+  runs_dir: ./runs
+  logs_dir: ./logs
+
+f5:
+  python_exe: python
+  root:
+  prepare_script:
+  train_script:
+  infer_script:

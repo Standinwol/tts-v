@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "voice-cli"
+version = "0.1.0"
+description = "CLI-first workflow for Vietnamese F5-TTS fine-tuning."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "PyYAML>=6,<7",
+  "rich>=13,<14",
+  "typer>=0.12,<1.0",
+]
+
+[project.scripts]
+voice-cli = "voice_cli.cli:app"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
