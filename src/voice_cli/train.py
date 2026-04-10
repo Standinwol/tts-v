@@ -1,5 +1,6 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
+import csv
 import json
 from pathlib import Path
 
@@ -36,9 +37,10 @@ def _split_records(records: list[ManifestRecord], val_ratio: float) -> tuple[lis
 def _write_prepare_input(metadata_path: Path, records: list[ManifestRecord]) -> None:
     metadata_path.parent.mkdir(parents=True, exist_ok=True)
     with metadata_path.open("w", encoding="utf-8", newline="") as handle:
-        handle.write("audio_file|text\n")
+        writer = csv.writer(handle, delimiter="|", quoting=csv.QUOTE_MINIMAL, lineterminator="\n")
+        writer.writerow(["audio_file", "text"])
         for record in records:
-            handle.write(f"{record.audio_path.resolve()}|{record.text}\n")
+            writer.writerow([str(record.audio_path.resolve()), record.text])
 
 
 def _find_resume_target(runs_dir: Path, run_name: str, resume: str | None) -> dict | None:
@@ -72,17 +74,13 @@ def _build_vi_prepare_command(
     script_path: Path,
     input_csv: Path,
     output_dir: Path,
-    runtime_root: Path,
     pretrain: Path,
 ) -> list[str]:
-    base_vocab = runtime_root / "data" / "Emilia_ZH_EN_pinyin" / "vocab.txt"
     return [
         python_exe,
         str(script_path),
         str(input_csv),
         str(output_dir),
-        "--base-vocab",
-        str(base_vocab),
         "--pretrain-checkpoint",
         str(pretrain),
     ]
@@ -149,7 +147,6 @@ def run_train(
             script_path=prepare_script,
             input_csv=prepare_input_csv,
             output_dir=prepare_output_dir,
-            runtime_root=runtime_root,
             pretrain=pretrain,
         )
     else:
@@ -167,7 +164,7 @@ def run_train(
         "manifest_path": str(manifest_path),
         "pretrain": str(pretrain),
         "effective_pretrain": str(effective_pretrain),
-        "prepare_profile": "vi_char" if use_vi_prepare else "upstream",
+        "prepare_profile": "vi_char_fresh_vocab" if use_vi_prepare else "upstream",
         "prepare_output_dir": str(prepare_output_dir),
         "expected_checkpoint_dir": str(runtime_root / "ckpts" / dataset_name),
         "resume": resume,

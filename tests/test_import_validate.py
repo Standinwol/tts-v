@@ -1,12 +1,15 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from pathlib import Path
+import sys
 import tempfile
 import unittest
 import wave
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
 from voice_cli.adapters.raw_pairs import import_from_raw_pairs
-from voice_cli.manifest import ManifestRecord
+from voice_cli.manifest import ManifestRecord, write_f5_csv
 from voice_cli.validate import _validate_record
 
 
@@ -54,6 +57,18 @@ class ImportValidateTests(unittest.TestCase):
 
             self.assertIn("sample_rate_mismatch", reasons)
             self.assertEqual(updated.sample_rate, 22050)
+
+    def test_write_f5_csv_quotes_pipe_in_text(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            wav_path = root / "sample.wav"
+            csv_path = root / "train.csv"
+            _write_silent_wav(wav_path, seconds=4.0)
+
+            write_f5_csv(csv_path, [ManifestRecord(audio_file=str(wav_path), text="xin|chao")])
+
+            contents = csv_path.read_text(encoding="utf-8")
+            self.assertIn('"xin|chao"', contents)
 
 
 if __name__ == "__main__":

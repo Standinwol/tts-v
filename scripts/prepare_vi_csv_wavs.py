@@ -1,28 +1,38 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import argparse
 import concurrent.futures
 import csv
 import json
 import multiprocessing
-import shutil
 import subprocess
 import sys
 import unicodedata
 from contextlib import contextmanager
-from importlib.resources import files
 from pathlib import Path
 
-import soundfile as sf
-import torchaudio
-from datasets.arrow_writer import ArrowWriter
-from tqdm import tqdm
+try:
+    import soundfile as sf
+except ImportError:
+    sf = None
+
+try:
+    import torchaudio
+except ImportError:
+    torchaudio = None
+
+try:
+    from datasets.arrow_writer import ArrowWriter
+except ImportError:
+    ArrowWriter = None
+
+try:
+    from tqdm import tqdm
+except ImportError:
+    tqdm = None
 
 
-DEFAULT_DATASET_NAME = "Emilia_ZH_EN"
-DEFAULT_BASE_TOKENIZER = "pinyin"
 SUMMARY_FILENAME = "prepare_vi_summary.json"
-BATCH_SIZE = 100
 CHUNK_SIZE = 100
 MAX_WORKERS = max(1, multiprocessing.cpu_count() - 1)
 THREAD_NAME_PREFIX = "ViAudioProcessor"
@@ -37,13 +47,9 @@ def normalize_text_vi(text: str) -> str:
     return cleaned.strip()
 
 
-def get_default_base_vocab_path() -> Path:
-    return Path(files("f5_tts").joinpath(f"../../data/{DEFAULT_DATASET_NAME}_{DEFAULT_BASE_TOKENIZER}/vocab.txt"))
-
-
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Prepare an F5-TTS dataset for Vietnamese char training without pinyin conversion."
+        description="Prepare an F5-TTS dataset for Vietnamese char training with a fresh Vietnamese vocab."
     )
     parser.add_argument("input_csv", type=Path, help="CSV with header audio_file|text and absolute audio paths.")
     parser.add_argument("output_dir", type=Path, help="Prepared dataset output directory, usually data/<dataset_name>_char.")
@@ -54,21 +60,10 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"Number of worker threads. Default: min({MAX_WORKERS}, file count).",
     )
     parser.add_argument(
-        "--base-vocab",
-        type=Path,
-        default=None,
-        help="Base vocab.txt used as the stable char index order. Defaults to F5-TTS Emilia_ZH_EN_pinyin vocab.",
-    )
-    parser.add_argument(
         "--pretrain-checkpoint",
         type=Path,
         default=None,
-        help="Optional pretrained checkpoint to copy or extend so it matches the generated Vietnamese char vocab.",
-    )
-    parser.add_argument(
-        "--allow-missing-vocab",
-        action="store_true",
-        help="Allow missing chars without preparing an adjusted checkpoint. Unsafe for finetuning unless you know the base vocab already covers them.",
+        help="Optional pretrained checkpoint whose text embedding will be reinitialized for the generated Vietnamese char vocab.",
     )
     return parser
 
@@ -94,6 +89,11 @@ def graceful_exit():
 
 def is_csv_input(path: Path) -> bool:
     return path.is_file() and path.suffix.lower() == ".csv"
+
+
+def _require_dependency(module, package_name: str, feature_name: str) -> None:
+    if module is None:
+        raise RuntimeError(f"{package_name} is required for {feature_name}. Run this script inside the F5-TTS training environment.")
 
 
 def read_audio_text_pairs(csv_file_path: Path) -> list[tuple[str, str]]:
@@ -124,6 +124,7 @@ def read_audio_text_pairs(csv_file_path: Path) -> list[tuple[str, str]]:
 
 
 def get_audio_duration(audio_path: str, timeout: int = 5) -> float:
+    _require_dependency(sf, "soundfile", "audio duration inspection")
     try:
         return sf.info(audio_path).duration
     except Exception:
@@ -153,6 +154,7 @@ def get_audio_duration(audio_path: str, timeout: int = 5) -> float:
     except Exception:
         pass
 
+    _require_dependency(torchaudio, "torchaudio", "audio duration inspection fallback")
     info = torchaudio.info(audio_path)
     if info.sample_rate <= 0:
         raise RuntimeError(f"failed to get duration for {audio_path}: invalid sample rate")
@@ -173,9 +175,10 @@ def process_audio_file(audio_path: str, text: str) -> tuple[str, str, float] | N
         return None
 
 
-def prepare_vi_csv_wavs(input_csv: Path, num_workers: int | None = None) -> tuple[list[dict], list[float], set[str]]:
+def prepare_vi_csv_wavs(input_csv: Path, num_workers: int | None = None) -> tuple[list[dict], list[float], list[str]]:
     global executor
 
+    _require_dependency(tqdm, "tqdm", "dataset preparation progress reporting")
     audio_path_text_pairs = read_audio_text_pairs(input_csv)
     total_files = len(audio_path_text_pairs)
     if total_files == 0:
@@ -204,41 +207,22 @@ def prepare_vi_csv_wavs(input_csv: Path, num_workers: int | None = None) -> tupl
                         results.append(result)
             executor = None
 
-    processed = [result for result in results if result is not None]
-    if not processed:
+    if not results:
         raise RuntimeError("No valid audio files were processed.")
 
     prepared_rows: list[dict] = []
     durations: list[float] = []
-    vocab_set: set[str] = set()
-    for audio_path, text, duration in processed:
+    vocab_chars: list[str] = [" "]
+    seen_chars = {" "}
+    for audio_path, text, duration in results:
         prepared_rows.append({"audio_path": audio_path, "text": text, "duration": duration})
         durations.append(duration)
-        vocab_set.update(text)
-    return prepared_rows, durations, vocab_set
-
-
-def read_vocab_chars(path: Path) -> list[str]:
-    chars: list[str] = []
-    with path.open("r", encoding="utf-8") as handle:
-        for line in handle:
-            chars.append(line.rstrip("\n"))
-    return chars
-
-
-def merge_vocab(base_vocab_chars: list[str], text_vocab_set: set[str]) -> tuple[list[str], list[str]]:
-    base_vocab = list(base_vocab_chars)
-    if not base_vocab:
-        base_vocab = [" "]
-    if base_vocab[0] != " ":
-        if " " in base_vocab:
-            base_vocab.remove(" ")
-        base_vocab.insert(0, " ")
-
-    seen = set(base_vocab)
-    missing_chars = sorted(char for char in text_vocab_set if char not in seen)
-    merged_vocab = base_vocab + missing_chars
-    return merged_vocab, missing_chars
+        for char in text:
+            if char in seen_chars:
+                continue
+            seen_chars.add(char)
+            vocab_chars.append(char)
+    return prepared_rows, durations, vocab_chars
 
 
 def write_vocab(path: Path, vocab_chars: list[str]) -> None:
@@ -248,23 +232,17 @@ def write_vocab(path: Path, vocab_chars: list[str]) -> None:
             handle.write("\n")
 
 
-def extend_embedding_rows(tensor, new_size: int):
+def rebuild_embedding_rows(tensor, new_size: int):
     import torch
 
-    old_size, embedding_dim = tensor.shape
-    if new_size < old_size:
-        raise ValueError(f"new vocab size {new_size} cannot be smaller than current size {old_size}")
-    if new_size == old_size:
-        return tensor
-
+    _, embedding_dim = tensor.shape
     mean = tensor.mean(dim=0, keepdim=True)
     std = tensor.std(dim=0, keepdim=True, unbiased=False)
     std = torch.where(std < 1e-5, torch.full_like(std, 0.02), std)
-    extra = mean + torch.randn((new_size - old_size, embedding_dim), dtype=tensor.dtype) * std
-    return torch.cat([tensor, extra], dim=0)
+    return mean + torch.randn((new_size, embedding_dim), dtype=tensor.dtype, device=tensor.device) * std
 
 
-def should_resize_tensor(name: str, tensor, checkpoint_vocab_size: int) -> bool:
+def should_reset_tensor(name: str, tensor, checkpoint_vocab_size: int) -> bool:
     return (
         hasattr(tensor, "ndim")
         and tensor.ndim == 2
@@ -273,15 +251,15 @@ def should_resize_tensor(name: str, tensor, checkpoint_vocab_size: int) -> bool:
     )
 
 
-def resize_checkpoint_object(obj, checkpoint_vocab_size: int, new_vocab_size: int, prefix: str = "") -> list[str]:
+def reset_checkpoint_text_embeddings(obj, checkpoint_vocab_size: int, new_vocab_size: int, prefix: str = "") -> list[str]:
     changed: list[str] = []
     if isinstance(obj, dict):
         for key, value in obj.items():
             dotted = f"{prefix}.{key}" if prefix else str(key)
             if isinstance(value, dict):
-                changed.extend(resize_checkpoint_object(value, checkpoint_vocab_size, new_vocab_size, dotted))
-            elif should_resize_tensor(dotted, value, checkpoint_vocab_size):
-                obj[key] = extend_embedding_rows(value, new_vocab_size)
+                changed.extend(reset_checkpoint_text_embeddings(value, checkpoint_vocab_size, new_vocab_size, dotted))
+            elif should_reset_tensor(dotted, value, checkpoint_vocab_size):
+                obj[key] = rebuild_embedding_rows(value, new_vocab_size)
                 changed.append(dotted)
     return changed
 
@@ -304,27 +282,31 @@ def detect_checkpoint_vocab_size(payload) -> int | None:
     return max(candidates)
 
 
-def prepare_adjusted_pretrain(pretrain_path: Path, output_path: Path, merged_vocab: list[str], missing_chars: list[str]) -> dict:
+def prepare_adjusted_pretrain(pretrain_path: Path, output_path: Path, prepared_vocab: list[str]) -> dict:
     import torch
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     suffix = pretrain_path.suffix.lower()
 
     if suffix == ".safetensors":
-        from safetensors.torch import load_file, save_file
+        try:
+            from safetensors.torch import load_file, save_file
+        except ImportError as exc:
+            raise RuntimeError("safetensors is required to rewrite .safetensors checkpoints.") from exc
 
         tensors = load_file(str(pretrain_path))
         checkpoint_vocab_size = detect_checkpoint_vocab_size(tensors)
         if checkpoint_vocab_size is None:
             raise RuntimeError(f"Could not detect text embedding weights in {pretrain_path}")
-        changed_keys = resize_checkpoint_object(tensors, checkpoint_vocab_size, len(merged_vocab))
-        if missing_chars and not changed_keys:
-            raise RuntimeError(f"No text embedding weights were resized in {pretrain_path}")
+        changed_keys = reset_checkpoint_text_embeddings(tensors, checkpoint_vocab_size, len(prepared_vocab))
+        if not changed_keys:
+            raise RuntimeError(f"No text embedding weights were reinitialized in {pretrain_path}")
         save_file(tensors, str(output_path))
         return {
             "checkpoint_format": "safetensors",
             "checkpoint_vocab_size": checkpoint_vocab_size,
             "changed_keys": changed_keys,
+            "reinitialized_text_embeddings": True,
         }
 
     if suffix == ".pt":
@@ -332,14 +314,15 @@ def prepare_adjusted_pretrain(pretrain_path: Path, output_path: Path, merged_voc
         checkpoint_vocab_size = detect_checkpoint_vocab_size(payload)
         if checkpoint_vocab_size is None:
             raise RuntimeError(f"Could not detect text embedding weights in {pretrain_path}")
-        changed_keys = resize_checkpoint_object(payload, checkpoint_vocab_size, len(merged_vocab))
-        if missing_chars and not changed_keys:
-            raise RuntimeError(f"No text embedding weights were resized in {pretrain_path}")
+        changed_keys = reset_checkpoint_text_embeddings(payload, checkpoint_vocab_size, len(prepared_vocab))
+        if not changed_keys:
+            raise RuntimeError(f"No text embedding weights were reinitialized in {pretrain_path}")
         torch.save(payload, output_path)
         return {
             "checkpoint_format": "pt",
             "checkpoint_vocab_size": checkpoint_vocab_size,
             "changed_keys": changed_keys,
+            "reinitialized_text_embeddings": True,
         }
 
     raise ValueError(f"Unsupported checkpoint format for {pretrain_path}. Expected .pt or .safetensors")
@@ -351,6 +334,8 @@ def save_prepared_dataset(
     durations: list[float],
     vocab_chars: list[str],
 ) -> None:
+    _require_dependency(ArrowWriter, "datasets", "writing prepared arrow datasets")
+    _require_dependency(tqdm, "tqdm", "dataset preparation progress reporting")
     output_dir.mkdir(parents=True, exist_ok=True)
     print(f"\nSaving to {output_dir} ...")
 
@@ -369,42 +354,22 @@ def main() -> int:
     args = build_parser().parse_args()
     input_csv = args.input_csv.expanduser().resolve()
     output_dir = args.output_dir.expanduser().resolve()
-    base_vocab_path = (args.base_vocab.expanduser().resolve() if args.base_vocab else get_default_base_vocab_path().resolve())
     pretrain_path = args.pretrain_checkpoint.expanduser().resolve() if args.pretrain_checkpoint else None
 
-    if not base_vocab_path.exists():
-        raise SystemExit(f"Base vocab not found: {base_vocab_path}")
     if pretrain_path is not None and not pretrain_path.exists():
         raise SystemExit(f"Pretrained checkpoint not found: {pretrain_path}")
 
-    rows, durations, text_vocab = prepare_vi_csv_wavs(input_csv, num_workers=args.workers)
-    base_vocab_chars = read_vocab_chars(base_vocab_path)
-    merged_vocab, missing_chars = merge_vocab(base_vocab_chars, text_vocab)
-    save_prepared_dataset(output_dir, rows, durations, merged_vocab)
+    rows, durations, vocab_chars = prepare_vi_csv_wavs(input_csv, num_workers=args.workers)
+    save_prepared_dataset(output_dir, rows, durations, vocab_chars)
 
     prepared_pretrain_path = None
     checkpoint_info: dict | None = None
     if pretrain_path is not None:
         prepared_pretrain_path = output_dir / f"pretrained_{pretrain_path.name}"
-        if missing_chars:
-            checkpoint_info = prepare_adjusted_pretrain(
-                pretrain_path=pretrain_path,
-                output_path=prepared_pretrain_path,
-                merged_vocab=merged_vocab,
-                missing_chars=missing_chars,
-            )
-        else:
-            shutil.copy2(pretrain_path, prepared_pretrain_path)
-            checkpoint_info = {
-                "checkpoint_format": pretrain_path.suffix.lower().lstrip("."),
-                "checkpoint_vocab_size": len(base_vocab_chars),
-                "changed_keys": [],
-            }
-    elif missing_chars and not args.allow_missing_vocab:
-        raise SystemExit(
-            "The Vietnamese dataset contains chars not present in the base vocab. "
-            "Re-run with --pretrain-checkpoint so the checkpoint can be adjusted, "
-            "or pass --allow-missing-vocab if you only want the prepared dataset."
+        checkpoint_info = prepare_adjusted_pretrain(
+            pretrain_path=pretrain_path,
+            output_path=prepared_pretrain_path,
+            prepared_vocab=vocab_chars,
         )
 
     summary = {
@@ -412,10 +377,7 @@ def main() -> int:
         "output_dir": str(output_dir),
         "records": len(rows),
         "total_hours": round(sum(durations) / 3600, 6),
-        "base_vocab_path": str(base_vocab_path),
-        "base_vocab_size": len(base_vocab_chars),
-        "prepared_vocab_size": len(merged_vocab),
-        "missing_chars": missing_chars,
+        "prepared_vocab_size": len(vocab_chars),
         "prepared_pretrain_checkpoint": str(prepared_pretrain_path) if prepared_pretrain_path else None,
         "checkpoint_info": checkpoint_info,
     }
@@ -423,13 +385,10 @@ def main() -> int:
 
     dataset_name = output_dir.stem
     print(f"\nFor {dataset_name}, sample count: {len(rows)}")
-    print(f"For {dataset_name}, vocab size is: {len(merged_vocab)}")
-    print(f"For {dataset_name}, missing chars appended: {len(missing_chars)}")
+    print(f"For {dataset_name}, vocab size is: {len(vocab_chars)}")
     print(f"For {dataset_name}, total {sum(durations) / 3600:.2f} hours")
     if prepared_pretrain_path is not None:
         print(f"Prepared pretrain checkpoint: {prepared_pretrain_path}")
-    if missing_chars:
-        print(f"Missing chars appended to vocab: {missing_chars}")
     return 0
 
 

@@ -1,4 +1,4 @@
-# voice-cli
+﻿# voice-cli
 
 CLI-first workflow for importing, validating, training, and inferencing Vietnamese voice cloning datasets with F5-TTS.
 
@@ -18,6 +18,8 @@ This repository includes the MVP commands:
 ```bash
 pip install -e .
 ```
+
+This minimal install is enough for the local CLI wrappers and dry-run flows. The actual F5-TTS training stack still needs an F5-TTS environment with PyTorch, torchaudio, datasets, soundfile, tqdm, and related training dependencies.
 
 2. Import a local dataset:
 
@@ -41,7 +43,7 @@ voice-cli train \
   --f5-root /path/to/F5-TTS
 ```
 
-For Vietnamese datasets, `voice-cli train` now switches to a `char` / no-pinyin prepare flow automatically when `configs/project.yaml` has `text.language: vi` and `configs/train.yaml` uses `tokenizer: char`. The prepared dataset is written to `data/<dataset_name>_char/`, and the copied or adjusted pretrain checkpoint is written next to it as `pretrained_<name>`.
+For Vietnamese datasets, `voice-cli train` now switches to a `char` / no-pinyin prepare flow automatically when `configs/project.yaml` has `text.language: vi` and `configs/train.yaml` uses `tokenizer: char`. The prepared dataset is written to `data/<dataset_name>_char/`, and the adapted pretrain checkpoint is written next to it as `pretrained_<name>`.
 
 5. Infer:
 
@@ -59,13 +61,12 @@ voice-cli infer \
 
 Do not use the upstream `prepare_csv_wavs.py` directly for Vietnamese if you want a stable `char` tokenizer workflow. The upstream prepare step converts text to pinyin, which corrupts Vietnamese transcripts.
 
-Use the local prepare helper instead:
+Use the local prepare helper inside your F5-TTS training environment instead:
 
 ```bash
 python scripts/prepare_vi_csv_wavs.py \
   /abs/path/to/metadata.csv \
   /path/to/F5-TTS/data/speaker01_char \
-  --base-vocab /path/to/F5-TTS/data/Emilia_ZH_EN_pinyin/vocab.txt \
   --pretrain-checkpoint /path/to/model_1250000.safetensors
 ```
 
@@ -73,9 +74,9 @@ This script:
 
 - keeps Vietnamese text in UTF-8 / NFC form
 - never converts text to pinyin
+- builds a fresh Vietnamese char vocab from the dataset itself
 - writes `raw.arrow`, `duration.json`, and `vocab.txt`
-- appends missing Vietnamese characters to the base vocab
-- prepares a matching `pretrained_<checkpoint>` file in the output directory when needed
+- rewrites the checkpoint text embedding so it matches the prepared char vocab instead of reusing pinyin-token indices
 
 Then train with:
 
@@ -93,3 +94,5 @@ Important details:
 - `metadata.csv` must use the header `audio_file|text`
 - `audio_file` values must be absolute paths
 - for `tokenizer=char`, F5-TTS resolves vocab from `data/<dataset_name>_char/vocab.txt`, so the output directory name must end with `_char`
+- if transcripts can contain `|`, use a proper CSV writer; the repo helpers already quote that correctly
+- this flow is intended to keep Vietnamese text intact and remove the pinyin mismatch, but model quality still depends on dataset quality, duration, and training length

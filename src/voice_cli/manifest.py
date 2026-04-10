@@ -1,5 +1,6 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
+import csv
 from dataclasses import asdict, dataclass, field
 import json
 from pathlib import Path
@@ -76,7 +77,8 @@ def merge_records(existing: list[ManifestRecord], new: list[ManifestRecord]) -> 
 def write_f5_csv(path: Path, records: list[ManifestRecord]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as handle:
-        handle.write("audio_file|text\n")
+        writer = csv.writer(handle, delimiter="|", quoting=csv.QUOTE_MINIMAL, lineterminator="\n")
+        writer.writerow(["audio_file", "text"])
         for record in records:
-            text = record.text.replace("\n", " ").strip()
-            handle.write(f"{record.audio_path.resolve()}|{text}\n")
+            text = record.text.replace("\r", " ").replace("\n", " ").strip()
+            writer.writerow([str(record.audio_path.resolve()), text])

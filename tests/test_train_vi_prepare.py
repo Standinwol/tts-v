@@ -1,9 +1,12 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 from pathlib import Path
+import sys
 import tempfile
 import unittest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from voice_cli.train import run_train
 
@@ -18,8 +21,7 @@ class TrainVietnamesePrepareTests(unittest.TestCase):
             pretrain_path = root / "model_1250000.safetensors"
             f5_root = root / "F5-TTS"
 
-            (f5_root / "data" / "Emilia_ZH_EN_pinyin").mkdir(parents=True)
-            (f5_root / "data" / "Emilia_ZH_EN_pinyin" / "vocab.txt").write_text(" \na\n", encoding="utf-8")
+            (f5_root / "data").mkdir(parents=True)
             pretrain_path.write_bytes(b"fake")
 
             project_config.write_text(
@@ -111,7 +113,8 @@ class TrainVietnamesePrepareTests(unittest.TestCase):
             self.assertTrue(str(prepare_command[1]).endswith("scripts\\prepare_vi_csv_wavs.py") or str(prepare_command[1]).endswith("scripts/prepare_vi_csv_wavs.py"))
             self.assertTrue(str(prepare_command[2]).endswith("metadata.csv"))
             self.assertTrue(Path(metadata["prepare_output_dir"]).name.endswith("_char"))
-            self.assertIn("--base-vocab", prepare_command)
+            self.assertEqual(metadata["prepare_profile"], "vi_char_fresh_vocab")
+            self.assertNotIn("--base-vocab", prepare_command)
             self.assertIn("--pretrain-checkpoint", prepare_command)
             effective_pretrain = Path(metadata["effective_pretrain"])
             self.assertEqual(effective_pretrain.name, f"pretrained_{pretrain_path.name}")
