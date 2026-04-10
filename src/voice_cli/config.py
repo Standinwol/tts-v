@@ -18,8 +18,21 @@ def _load_yaml(path: Path) -> dict[str, Any]:
     return loaded
 
 
-def _path(value: str | None, default: str) -> Path:
-    return Path(value or default)
+def _resolve_path(value: str | Path, base_dir: Path) -> Path:
+    candidate = Path(value)
+    if candidate.is_absolute():
+        return candidate.resolve()
+    return (base_dir / candidate).resolve()
+
+
+def _path(value: str | None, default: str, base_dir: Path) -> Path:
+    return _resolve_path(value or default, base_dir)
+
+
+def _optional_path(value: str | None, base_dir: Path) -> Path | None:
+    if not value:
+        return None
+    return _resolve_path(value, base_dir)
 
 
 @dataclass(slots=True)
@@ -107,6 +120,7 @@ class InferConfig:
 
 def load_project_config(path: Path) -> ProjectConfig:
     raw = _load_yaml(path)
+    base_dir = path.resolve().parent
     audio = raw.get("audio", {})
     text = raw.get("text", {})
     manifest = raw.get("manifest", {})
@@ -125,24 +139,24 @@ def load_project_config(path: Path) -> ProjectConfig:
             normalize_unicode=bool(text.get("normalize_unicode", True)),
         ),
         manifest=ManifestConfig(
-            master=_path(manifest.get("master"), "./data/manifests/master.jsonl"),
-            validated=_path(manifest.get("validated"), "./data/manifests/validated.jsonl"),
-            invalid=_path(manifest.get("invalid"), "./data/manifests/invalid.jsonl"),
-            train_f5=_path(manifest.get("train_f5"), "./data/manifests/train_f5.csv"),
-            val_f5=_path(manifest.get("val_f5"), "./data/manifests/val_f5.csv"),
+            master=_path(manifest.get("master"), "./data/manifests/master.jsonl", base_dir),
+            validated=_path(manifest.get("validated"), "./data/manifests/validated.jsonl", base_dir),
+            invalid=_path(manifest.get("invalid"), "./data/manifests/invalid.jsonl", base_dir),
+            train_f5=_path(manifest.get("train_f5"), "./data/manifests/train_f5.csv", base_dir),
+            val_f5=_path(manifest.get("val_f5"), "./data/manifests/val_f5.csv", base_dir),
         ),
         paths=RuntimePathsConfig(
-            imports_root=_path(paths.get("imports_root"), "./data/imports"),
-            reports_dir=_path(paths.get("reports_dir"), "./reports"),
-            runs_dir=_path(paths.get("runs_dir"), "./runs"),
-            logs_dir=_path(paths.get("logs_dir"), "./logs"),
+            imports_root=_path(paths.get("imports_root"), "./data/imports", base_dir),
+            reports_dir=_path(paths.get("reports_dir"), "./reports", base_dir),
+            runs_dir=_path(paths.get("runs_dir"), "./runs", base_dir),
+            logs_dir=_path(paths.get("logs_dir"), "./logs", base_dir),
         ),
         f5=F5Config(
             python_exe=str(f5.get("python_exe") or "python"),
-            root=Path(f5["root"]) if f5.get("root") else None,
-            prepare_script=Path(f5["prepare_script"]) if f5.get("prepare_script") else None,
-            train_script=Path(f5["train_script"]) if f5.get("train_script") else None,
-            infer_script=Path(f5["infer_script"]) if f5.get("infer_script") else None,
+            root=_optional_path(f5.get("root"), base_dir),
+            prepare_script=_optional_path(f5.get("prepare_script"), base_dir),
+            train_script=_optional_path(f5.get("train_script"), base_dir),
+            infer_script=_optional_path(f5.get("infer_script"), base_dir),
         ),
     )
 

@@ -1,5 +1,6 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
+import importlib.util
 import json
 from pathlib import Path
 import sys
@@ -11,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from voice_cli.train import run_train
 
 
+@unittest.skipUnless(importlib.util.find_spec("yaml") is not None, "PyYAML not installed")
 class TrainVietnamesePrepareTests(unittest.TestCase):
     def test_run_train_uses_vi_prepare_script_for_char_tokenizer(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -110,7 +112,9 @@ class TrainVietnamesePrepareTests(unittest.TestCase):
             train_command = metadata["commands"]["train"]
             self.assertIsNotNone(prepare_command)
             assert prepare_command is not None
-            self.assertTrue(str(prepare_command[1]).endswith("scripts\\prepare_vi_csv_wavs.py") or str(prepare_command[1]).endswith("scripts/prepare_vi_csv_wavs.py"))
+            prepare_script = Path(str(prepare_command[1]))
+            self.assertEqual(prepare_script.name, "prepare_vi_csv_wavs.py")
+            self.assertIn("voice_cli", prepare_script.parts)
             self.assertTrue(str(prepare_command[2]).endswith("metadata.csv"))
             self.assertTrue(Path(metadata["prepare_output_dir"]).name.endswith("_char"))
             self.assertEqual(metadata["prepare_profile"], "vi_char_fresh_vocab")

@@ -12,7 +12,7 @@ from pathlib import Path
 TIME_PATTERN = re.compile(
     r"(?P<start>\d{2}:\d{2}:\d{2}[,.]\d{3})\s*-->\s*(?P<end>\d{2}:\d{2}:\d{2}[,.]\d{3})"
 )
-SENTENCE_END_PATTERN = re.compile(r"[.!?…][\"'”’)\]]*\s*$")
+SENTENCE_END_PATTERN = re.compile(r"[.!?\u2026][\"'\u201d\u2019)\]]*\s*$")
 
 
 @dataclass
@@ -47,6 +47,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Split an audio file into clips using subtitle timestamps from an SRT file."
     )
+    parser.set_defaults(prefer_sentence_end=True)
     parser.add_argument("audio", type=Path, help="Input audio file.")
     parser.add_argument("srt", type=Path, help="Input SRT subtitle file.")
     parser.add_argument(
@@ -94,19 +95,31 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--merge-sentences",
         action="store_true",
-        help="Merge consecutive subtitle cues until the combined text ends with sentence punctuation.",
+        help="Merge consecutive subtitle cues until the combined text ends with sentence punctuation. If a finished sentence is shorter than --min-duration, keep merging with the next sentence when the timestamp gap allows it.",
     )
     parser.add_argument(
         "--max-merge-gap",
         type=float,
-        default=0.8,
-        help="When --merge-sentences is enabled, break the group if the gap between cues exceeds this many seconds. Default: 0.8",
+        default=1.5,
+        help="When --merge-sentences is enabled, break the group if the gap between cues exceeds this many seconds. Default: 1.5",
     )
     parser.add_argument(
         "--max-merged-duration",
         type=float,
         default=15.0,
-        help="When --merge-sentences is enabled, force a split once a merged segment reaches this duration in seconds. Default: 15",
+        help="When --merge-sentences is enabled, use this as the target merged duration in seconds. By default the script keeps merging until sentence-ending punctuation; use --force-mid-sentence-split to make this a hard cap. Default: 15",
+    )
+    parser.add_argument(
+        "--prefer-sentence-end",
+        dest="prefer_sentence_end",
+        action="store_true",
+        help="When --merge-sentences is enabled, treat --max-merged-duration as a soft target and keep merging until sentence-ending punctuation. Default: enabled.",
+    )
+    parser.add_argument(
+        "--force-mid-sentence-split",
+        dest="prefer_sentence_end",
+        action="store_false",
+        help="When --merge-sentences is enabled, treat --max-merged-duration as a hard cap and allow splitting before sentence-ending punctuation.",
     )
     return parser
 
@@ -199,6 +212,8 @@ def merge_sentence_segments(
     segments: list[SubtitleSegment],
     max_gap: float,
     max_merged_duration: float,
+    prefer_sentence_end: bool,
+    min_sentence_duration: float,
 ) -> list[SubtitleSegment]:
     if not segments:
         return []
@@ -225,10 +240,15 @@ def merge_sentence_segments(
 
         combined = merge_segment_group(current_group)
         if ends_sentence(combined.text):
-            flush_group()
-            continue
+            if combined.duration_seconds >= min_sentence_duration:
+                flush_group()
+                continue
 
-        if max_merged_duration > 0 and combined.duration_seconds >= max_merged_duration:
+        if (
+            max_merged_duration > 0
+            and combined.duration_seconds >= max_merged_duration
+            and not prefer_sentence_end
+        ):
             flush_group()
 
     flush_group()
@@ -296,6 +316,8 @@ def main() -> int:
             segments,
             max_gap=args.max_merge_gap,
             max_merged_duration=args.max_merged_duration,
+            prefer_sentence_end=args.prefer_sentence_end,
+            min_sentence_duration=args.min_duration,
         )
         if args.merge_sentences
         else segments

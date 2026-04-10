@@ -10,6 +10,7 @@ def import_from_raw_pairs(
     source: Path,
     speaker: str | None = None,
     language: str = "vi",
+    normalize_unicode: bool = True,
 ) -> list[ManifestRecord]:
     if source.is_file():
         wav_files = [source]
@@ -23,9 +24,9 @@ def import_from_raw_pairs(
         srt_path = stem.with_suffix(".srt")
         transcript = None
         if txt_path.exists():
-            transcript = normalize_text(read_text_file(txt_path))
+            transcript = normalize_text(read_text_file(txt_path), normalize_unicode=normalize_unicode)
         elif srt_path.exists():
-            transcript = parse_srt_text(read_text_file(srt_path))
+            transcript = parse_srt_text(read_text_file(srt_path), normalize_unicode=normalize_unicode)
         if transcript is None:
             continue
         duration = None

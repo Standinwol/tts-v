@@ -48,7 +48,7 @@ def normalize_text(text: str, normalize_unicode: bool = True) -> str:
     return cleaned.strip()
 
 
-def parse_srt_text(raw: str) -> str:
+def parse_srt_text(raw: str, normalize_unicode: bool = True) -> str:
     lines: list[str] = []
     for line in raw.splitlines():
         stripped = line.strip()
@@ -59,7 +59,7 @@ def parse_srt_text(raw: str) -> str:
         if "-->" in stripped:
             continue
         lines.append(stripped)
-    return normalize_text(" ".join(lines))
+    return normalize_text(" ".join(lines), normalize_unicode=normalize_unicode)
 
 
 def probe_wav(path: Path) -> AudioInfo:

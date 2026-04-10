@@ -53,10 +53,32 @@ class ImportValidateTests(unittest.TestCase):
                 min_sec=3.0,
                 max_sec=20.0,
                 seen_paths=set(),
+                normalize_unicode=True,
             )
 
             self.assertIn("sample_rate_mismatch", reasons)
             self.assertEqual(updated.sample_rate, 22050)
+
+    def test_validate_record_respects_normalize_unicode_flag(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            wav_path = root / "sample.wav"
+            _write_silent_wav(wav_path, sample_rate=24000, seconds=4.0)
+            decomposed_text = "a\u0301"
+            record = ManifestRecord(audio_file=str(wav_path), text=decomposed_text)
+
+            updated, reasons = _validate_record(
+                record=record,
+                expected_sample_rate=24000,
+                expected_channels=1,
+                min_sec=3.0,
+                max_sec=20.0,
+                seen_paths=set(),
+                normalize_unicode=False,
+            )
+
+            self.assertEqual(reasons, [])
+            self.assertEqual(updated.text, decomposed_text)
 
     def test_write_f5_csv_quotes_pipe_in_text(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

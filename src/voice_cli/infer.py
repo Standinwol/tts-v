@@ -30,11 +30,14 @@ def run_infer(
     project = load_project_config(project_config_path)
     infer_config = load_infer_config(infer_config_path)
     runtime = resolve_runtime(project.f5, python_exe=python_exe, f5_root=f5_root)
+    missing_ref_text = ref_text is None or not ref_text.strip()
 
-    if infer_config.require_ref_text and not auto_transcribe_ref and not ref_text:
-        raise ValueError("ref_text is required unless --auto-transcribe-ref is enabled.")
-    if auto_transcribe_ref and not infer_config.allow_auto_transcribe_ref:
-        raise ValueError("Auto transcription is disabled by configs/infer.yaml.")
+    if missing_ref_text:
+        if auto_transcribe_ref:
+            if not infer_config.allow_auto_transcribe_ref:
+                raise ValueError("Auto transcription is disabled by configs/infer.yaml.")
+        elif infer_config.require_ref_text:
+            raise ValueError("ref_text is required unless --auto-transcribe-ref is enabled.")
 
     ensure_dir(out.parent)
     run_id = timestamp_id("infer")

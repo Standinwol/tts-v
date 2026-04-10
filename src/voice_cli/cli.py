@@ -7,6 +7,7 @@ import typer
 from voice_cli.console import console
 from voice_cli.import_data import run_import
 from voice_cli.infer import run_infer
+from voice_cli.normalize_numbers import run_normalize_numbers
 from voice_cli.train import run_train
 from voice_cli.validate import validate_manifest
 
@@ -85,6 +86,26 @@ def train_command(
         )
     except Exception as exc:
         console.print(f"[red]Train setup failed:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+    console.print(summary)
+
+
+@app.command("normalize-vi-numbers")
+def normalize_vi_numbers_command(
+    source: Path = typer.Option(..., help="Source text file. Supports .txt, .srt, .csv, .jsonl"),
+    output: Path | None = typer.Option(None, help="Optional output path. Defaults to <source>.normalized.<ext>"),
+    format: str = typer.Option("auto", "--format", help="One of: auto, text, srt, csv, jsonl."),
+    overwrite: bool = typer.Option(False, help="Rewrite the source file in place."),
+) -> None:
+    try:
+        summary = run_normalize_numbers(
+            source=source,
+            output=output,
+            overwrite=overwrite,
+            format_name=format,
+        )
+    except Exception as exc:
+        console.print(f"[red]Normalize failed:[/red] {exc}")
         raise typer.Exit(code=1) from exc
     console.print(summary)
 

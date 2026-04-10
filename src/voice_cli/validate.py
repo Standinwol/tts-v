@@ -24,9 +24,10 @@ def _validate_record(
     min_sec: float,
     max_sec: float,
     seen_paths: set[str],
+    normalize_unicode: bool,
 ) -> tuple[ManifestRecord, list[str]]:
     reasons: list[str] = []
-    normalized_text = normalize_text(record.text)
+    normalized_text = normalize_text(record.text, normalize_unicode=normalize_unicode)
 
     if not normalized_text:
         reasons.append("empty_text")
@@ -91,6 +92,7 @@ def validate_manifest(
             min_sec=lower,
             max_sec=upper,
             seen_paths=seen_paths,
+            normalize_unicode=project.text.normalize_unicode,
         )
         text_counter[checked.text] += 1
         if reasons:

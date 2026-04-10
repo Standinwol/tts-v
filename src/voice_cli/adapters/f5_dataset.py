@@ -13,15 +13,26 @@ def import_from_f5_zip(
     imports_root: Path,
     speaker: str | None = None,
     language: str = "vi",
+    normalize_unicode: bool = True,
     overwrite: bool = False,
 ) -> list[ManifestRecord]:
     extracted_root = extract_zip(source, imports_root / source.stem, overwrite=overwrite)
     metadata_json = find_first(extracted_root, "metadata.json")
     metadata_csv = find_first(extracted_root, "metadata.csv")
     if metadata_json:
-        return import_from_f5_json(metadata_json, speaker=speaker, language=language)
+        return import_from_f5_json(
+            metadata_json,
+            speaker=speaker,
+            language=language,
+            normalize_unicode=normalize_unicode,
+        )
     if metadata_csv:
-        return import_from_f5_csv(metadata_csv, speaker=speaker, language=language)
+        return import_from_f5_csv(
+            metadata_csv,
+            speaker=speaker,
+            language=language,
+            normalize_unicode=normalize_unicode,
+        )
     raise FileNotFoundError(f"No metadata.json or metadata.csv found in {source}")
 
 
@@ -29,6 +40,7 @@ def import_from_f5_csv(
     source: Path,
     speaker: str | None = None,
     language: str = "vi",
+    normalize_unicode: bool = True,
 ) -> list[ManifestRecord]:
     records: list[ManifestRecord] = []
     with source.open("r", encoding="utf-8-sig", newline="") as handle:
@@ -50,7 +62,7 @@ def import_from_f5_csv(
             records.append(
                 ManifestRecord(
                     audio_file=str(audio_path.resolve()),
-                    text=normalize_text(raw_text),
+                    text=normalize_text(raw_text, normalize_unicode=normalize_unicode),
                     speaker=speaker or "speaker01",
                     language=language,
                     duration_sec=duration,
@@ -67,6 +79,7 @@ def import_from_f5_json(
     source: Path,
     speaker: str | None = None,
     language: str = "vi",
+    normalize_unicode: bool = True,
 ) -> list[ManifestRecord]:
     payload = json.loads(source.read_text(encoding="utf-8"))
     if not isinstance(payload, list):
@@ -91,10 +104,10 @@ def import_from_f5_json(
                 duration = duration if duration is not None else None
                 sample_rate = sample_rate if sample_rate is not None else None
         records.append(
-            ManifestRecord(
-                audio_file=str(audio_path.resolve()),
-                text=normalize_text(str(raw_text)),
-                speaker=str(row.get("speaker") or speaker or "speaker01"),
+                ManifestRecord(
+                    audio_file=str(audio_path.resolve()),
+                    text=normalize_text(str(raw_text), normalize_unicode=normalize_unicode),
+                    speaker=str(row.get("speaker") or speaker or "speaker01"),
                 language=str(row.get("language") or language),
                 duration_sec=float(duration) if duration is not None else None,
                 sample_rate=int(sample_rate) if sample_rate is not None else None,

@@ -4,12 +4,15 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .venv/
+.venv-vast/
 venv/
 *.egg-info/
 dist/
 build/
 .coverage
 coverage.xml
+.coverage.*
+.ipynb_checkpoints/
 
 data/
 exp/
@@ -43,5 +46,10 @@ smoke_0410_24/
 .python-version
 .vscode/
 .idea/
+*.log
+*.tmp
+*.orig
+*.rej
+*.bak_corrupted
 .DS_Store
 Thumbs.db

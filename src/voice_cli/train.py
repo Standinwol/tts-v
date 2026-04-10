@@ -4,6 +4,7 @@ import csv
 import json
 from pathlib import Path
 
+from voice_cli import prepare_vi_csv_wavs as vi_prepare_module
 from voice_cli.config import load_project_config, load_train_config
 from voice_cli.f5_wrapper import (
     build_prepare_command,
@@ -14,10 +15,6 @@ from voice_cli.f5_wrapper import (
 )
 from voice_cli.io import ensure_dir, sanitize_name, timestamp_id, write_json
 from voice_cli.manifest import ManifestRecord, load_jsonl, write_f5_csv
-
-
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[2]
 
 
 def _split_records(records: list[ManifestRecord], val_ratio: float) -> tuple[list[ManifestRecord], list[ManifestRecord]]:
@@ -61,11 +58,16 @@ def _find_resume_target(runs_dir: Path, run_name: str, resume: str | None) -> di
 
 
 def _should_use_vi_prepare(language: str, tokenizer: str) -> bool:
-    return language.lower() == "vi" and tokenizer.lower() == "char"
+    normalized_language = language.strip().lower().replace("_", "-")
+    is_vietnamese = normalized_language in {"vi", "vi-vn", "vietnamese"}
+    return is_vietnamese and tokenizer.lower() == "char"
 
 
 def _vi_prepare_script_path() -> Path:
-    return _repo_root() / "scripts" / "prepare_vi_csv_wavs.py"
+    script_path = Path(vi_prepare_module.__file__ or "")
+    if not script_path.exists():
+        raise FileNotFoundError("Unable to resolve packaged Vietnamese prepare helper.")
+    return script_path.resolve()
 
 
 def _build_vi_prepare_command(

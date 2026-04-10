@@ -10,6 +10,7 @@ def import_from_esd_list(
     source: Path,
     speaker: str | None = None,
     language: str | None = None,
+    normalize_unicode: bool = True,
 ) -> list[ManifestRecord]:
     records: list[ManifestRecord] = []
     for index, line in enumerate(read_text_file(source).splitlines(), start=1):
@@ -32,7 +33,7 @@ def import_from_esd_list(
         records.append(
             ManifestRecord(
                 audio_file=str(audio_path.resolve()),
-                text=normalize_text(row_text),
+                text=normalize_text(row_text, normalize_unicode=normalize_unicode),
                 speaker=speaker or row_speaker or "speaker01",
                 language=(language or row_language or "vi").lower(),
                 duration_sec=duration,

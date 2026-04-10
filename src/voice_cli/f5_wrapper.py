@@ -169,8 +169,6 @@ def build_infer_command(
     if runtime.infer_script is None:
         raise ValueError("Unable to resolve F5 infer_cli.py. Pass --f5-root or --infer-script.")
     effective_model = model or infer_config.model
-    if ref_text is None and auto_transcribe_ref:
-        ref_text = ""
     command = [
         runtime.python_exe,
         str(runtime.infer_script),
@@ -180,8 +178,6 @@ def build_infer_command(
         str(checkpoint),
         "--ref_audio",
         str(ref_audio),
-        "--ref_text",
-        ref_text or "",
         "--gen_text",
         gen_text,
         "--output_dir",
@@ -195,6 +191,10 @@ def build_infer_command(
         "--vocoder_name",
         vocoder_name or infer_config.default_vocoder_name,
     ]
+    if ref_text is not None:
+        command.extend(["--ref_text", ref_text])
+    elif auto_transcribe_ref:
+        command.extend(["--ref_text", ""])
     if vocab_file is not None:
         command.extend(["--vocab_file", str(vocab_file)])
     if seed is not None:

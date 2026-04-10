@@ -20,6 +20,7 @@ def run_import(
 ) -> dict:
     project = load_project_config(project_config_path)
     effective_language = language or project.text.language
+    normalize_unicode = project.text.normalize_unicode
     format_name = source_format.lower()
 
     if format_name == "f5_zip":
@@ -28,16 +29,37 @@ def run_import(
             imports_root=project.paths.imports_root,
             speaker=speaker,
             language=effective_language,
+            normalize_unicode=normalize_unicode,
             overwrite=overwrite_imports,
         )
     elif format_name == "f5_csv":
-        imported = import_from_f5_csv(source, speaker=speaker, language=effective_language)
+        imported = import_from_f5_csv(
+            source,
+            speaker=speaker,
+            language=effective_language,
+            normalize_unicode=normalize_unicode,
+        )
     elif format_name == "f5_json":
-        imported = import_from_f5_json(source, speaker=speaker, language=effective_language)
+        imported = import_from_f5_json(
+            source,
+            speaker=speaker,
+            language=effective_language,
+            normalize_unicode=normalize_unicode,
+        )
     elif format_name == "gpt_sovits":
-        imported = import_from_esd_list(source, speaker=speaker, language=effective_language)
+        imported = import_from_esd_list(
+            source,
+            speaker=speaker,
+            language=effective_language,
+            normalize_unicode=normalize_unicode,
+        )
     elif format_name == "raw_pairs":
-        imported = import_from_raw_pairs(source, speaker=speaker, language=effective_language)
+        imported = import_from_raw_pairs(
+            source,
+            speaker=speaker,
+            language=effective_language,
+            normalize_unicode=normalize_unicode,
+        )
     else:
         raise ValueError(f"Unsupported format: {source_format}")
 
